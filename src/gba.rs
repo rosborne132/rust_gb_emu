@@ -1,164 +1,167 @@
-const NINTENDO_LOGO: [u8; 48] = [
-    0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
-    0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E, 0xDC, 0xCC, 0x6E, 0xE6, 0xDD, 0xDD, 0xD9, 0x99,
-    0xBB, 0xBB, 0x67, 0x63, 0x6E, 0x0E, 0xEC, 0xCC, 0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E,
-];
+// const NINTENDO_LOGO: [u8; 48] = [
+//     0xCE, 0xED, 0x66, 0x66, 0xCC, 0x0D, 0x00, 0x0B, 0x03, 0x73, 0x00, 0x83, 0x00, 0x0C, 0x00, 0x0D,
+//     0x00, 0x08, 0x11, 0x1F, 0x88, 0x89, 0x00, 0x0E, 0xDC, 0xCC, 0x6E, 0xE6, 0xDD, 0xDD, 0xD9, 0x99,
+//     0xBB, 0xBB, 0x67, 0x63, 0x6E, 0x0E, 0xEC, 0xCC, 0xDD, 0xDC, 0x99, 0x9F, 0xBB, 0xB9, 0x33, 0x3E,
+// ];
 
-use std::cmp::Ordering;
+// use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
-use std::fs;
+// use std::fs;
 use std::io;
 use std::io::Write;
-use std::num::Wrapping;
+// use std::num::Wrapping;
 use std::panic;
 use std::result::Result;
 
+use super::components::cartridge::ROM;
+use super::components::opcode::{flag_picker, FlagBit, MemoryBankType, Opcode, Register};
+
 // Used for debugging.
-static CALL_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+// static CALL_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
 mod constants;
 mod math;
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum Register {
-    A,
-    B,
-    C,
-    D,
-    E,
-    F,
-    H,
-    L,
-    SPHi,
-    SPLo,
-    PCHi,
-    PCLo,
-    SpecialLoadHL,
-    Empty,
-}
+// #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+// pub enum Register {
+//     A,
+//     B,
+//     C,
+//     D,
+//     E,
+//     F,
+//     H,
+//     L,
+//     SPHi,
+//     SPLo,
+//     PCHi,
+//     PCLo,
+//     SpecialLoadHL,
+//     Empty,
+// }
 
-fn nth_register(nth: u8) -> Register {
-    match nth {
-        0x0 => Register::B,
-        0x1 => Register::C,
-        0x2 => Register::D,
-        0x3 => Register::E,
-        0x4 => Register::H,
-        0x5 => Register::L,
-        0x6 => Register::SpecialLoadHL,
-        0x7 => Register::A,
-        _ => Register::Empty,
-    }
-}
+// fn nth_register(nth: u8) -> Register {
+//     match nth {
+//         0x0 => Register::B,
+//         0x1 => Register::C,
+//         0x2 => Register::D,
+//         0x3 => Register::E,
+//         0x4 => Register::H,
+//         0x5 => Register::L,
+//         0x6 => Register::SpecialLoadHL,
+//         0x7 => Register::A,
+//         _ => Register::Empty,
+//     }
+// }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum FlagBit {
-    Zero,
-    AddSub,
-    HalfCarry,
-    Carry,
-}
+// #[derive(Copy, Clone, Debug, PartialEq, Eq)]
+// pub enum FlagBit {
+//     Zero,
+//     AddSub,
+//     HalfCarry,
+//     Carry,
+// }
 
-fn flag_picker(flag: FlagBit) -> u8 {
-    match flag {
-        FlagBit::Zero => 1 << 7,
-        FlagBit::AddSub => 1 << 6,
-        FlagBit::HalfCarry => 1 << 5,
-        FlagBit::Carry => 1 << 4,
-    }
-}
+// fn flag_picker(flag: FlagBit) -> u8 {
+//     match flag {
+//         FlagBit::Zero => 1 << 7,
+//         FlagBit::AddSub => 1 << 6,
+//         FlagBit::HalfCarry => 1 << 5,
+//         FlagBit::Carry => 1 << 4,
+//     }
+// }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum Opcode {
-    Noop,
-    Stop,
-    Halt,
-    Load16(Register, Register, u16),
-    Load8(Register, u8),
-    LoadReg(Register, Register),
-    LoadAddress(Register, u16),
-    LoadAddressFromRegisters(Register, Register, Register),
-    LoadRegisterIntoMemory(Register, Register, Register),
-    LoadRamCIntoA,
-    LoadHLIntoSP,
-    SaveRegister(Register, u16),
-    SaveAIntoRamC,
-    SaveSP(u16),
-    LoadHLInc,
-    SaveHLInc,
-    LoadHLDec,
-    SaveHLDec,
-    SaveHLSP(i8),
-    AddHL(Register, Register),
-    Inc(Register),
-    IncPair(Register, Register),
-    Dec(Register),
-    DecPair(Register, Register),
-    Jump(u16),
-    JumpCond(FlagBit, bool, u16),
-    JumpRelative(i8),
-    JumpRelativeCond(FlagBit, bool, i8),
-    JumpHL,
-    DisableInterrupts,
-    EnableInterrupts,
-    Push(Register, Register),
-    Pop(Register, Register),
-    Call(u16),
-    CallCond(FlagBit, bool, u16),
-    Return,
-    ReturnCond(FlagBit, bool),
-    ReturnInterrupt,
-    Or(Register),
-    And(Register),
-    Xor(Register),
-    Cp(Register),
-    Add(Register),
-    AddCarry(Register),
-    AddSP(i8),
-    Sub(Register),
-    SubCarry(Register),
-    AndValue(u8),
-    OrValue(u8),
-    XorValue(u8),
-    CpValue(u8),
-    AddValue(u8),
-    AddCarryValue(u8),
-    SubValue(u8),
-    SubCarryValue(u8),
-    RLC(Register),
-    RRC(Register),
-    RL(Register),
-    RR(Register),
-    RLCA,
-    RRCA,
-    RLA,
-    RRA,
-    SLA(Register),
-    SRA(Register),
-    Swap(Register),
-    SRL(Register),
-    Bit(Register, u8),
-    Reset(Register, u8),
-    Set(Register, u8),
-    CPL,
-    CCF,
-    SCF,
-    Restart(u16),
-    DAA,
-    UnimplementedOpcode(u8),
-}
+// #[derive(Debug, PartialEq, Eq)]
+// pub enum Opcode {
+//     Noop,
+//     Stop,
+//     Halt,
+//     Load16(Register, Register, u16),
+//     Load8(Register, u8),
+//     LoadReg(Register, Register),
+//     LoadAddress(Register, u16),
+//     LoadAddressFromRegisters(Register, Register, Register),
+//     LoadRegisterIntoMemory(Register, Register, Register),
+//     LoadRamCIntoA,
+//     LoadHLIntoSP,
+//     SaveRegister(Register, u16),
+//     SaveAIntoRamC,
+//     SaveSP(u16),
+//     LoadHLInc,
+//     SaveHLInc,
+//     LoadHLDec,
+//     SaveHLDec,
+//     SaveHLSP(i8),
+//     AddHL(Register, Register),
+//     Inc(Register),
+//     IncPair(Register, Register),
+//     Dec(Register),
+//     DecPair(Register, Register),
+//     Jump(u16),
+//     JumpCond(FlagBit, bool, u16),
+//     JumpRelative(i8),
+//     JumpRelativeCond(FlagBit, bool, i8),
+//     JumpHL,
+//     DisableInterrupts,
+//     EnableInterrupts,
+//     Push(Register, Register),
+//     Pop(Register, Register),
+//     Call(u16),
+//     CallCond(FlagBit, bool, u16),
+//     Return,
+//     ReturnCond(FlagBit, bool),
+//     ReturnInterrupt,
+//     Or(Register),
+//     And(Register),
+//     Xor(Register),
+//     Cp(Register),
+//     Add(Register),
+//     AddCarry(Register),
+//     AddSP(i8),
+//     Sub(Register),
+//     SubCarry(Register),
+//     AndValue(u8),
+//     OrValue(u8),
+//     XorValue(u8),
+//     CpValue(u8),
+//     AddValue(u8),
+//     AddCarryValue(u8),
+//     SubValue(u8),
+//     SubCarryValue(u8),
+//     RLC(Register),
+//     RRC(Register),
+//     RL(Register),
+//     RR(Register),
+//     RLCA,
+//     RRCA,
+//     RLA,
+//     RRA,
+//     SLA(Register),
+//     SRA(Register),
+//     Swap(Register),
+//     SRL(Register),
+//     Bit(Register, u8),
+//     Reset(Register, u8),
+//     Set(Register, u8),
+//     CPL,
+//     CCF,
+//     SCF,
+//     Restart(u16),
+//     DAA,
+//     UnimplementedOpcode(u8),
+// }
 
-#[derive(Debug, PartialEq, Eq)]
-pub enum MemoryBankType {
-    ROM,
-    MBC1,
-    MBC2,
-    MMM01,
-    MBC3,
-    MBC4,
-    MBC5,
-}
+// #[derive(Debug, PartialEq, Eq)]
+// pub enum MemoryBankType {
+//     ROM,
+//     MBC1,
+//     MBC2,
+//     MMM01,
+//     MBC3,
+//     MBC4,
+//     MBC5,
+// }
 
 // pub struct ROM {
 //     content: Vec<u8>,

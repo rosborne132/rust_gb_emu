@@ -1,6 +1,7 @@
 extern crate cursive;
 extern crate termion;
 
+mod components;
 pub mod gba;
 
 use cursive::traits::*;
@@ -18,7 +19,7 @@ use std::rc::Rc;
 use std::sync::mpsc;
 use std::thread;
 
-use components::cartridge::ROM;
+use components::cartridge;
 
 use parse_int::parse;
 
@@ -29,7 +30,7 @@ use termion::raw::IntoRawMode;
 fn main() -> Result<(), std::io::Error> {
     let args: Vec<String> = env::args().collect();
     let filename = &args[1];
-    let rom = components::cartridge::ROM::from_path(filename);
+    let rom = cartridge::ROM::from_path(filename);
     let _title = rom.title();
     let interpreter = gba::Interpreter::with_rom(rom);
     let ref_inter = Rc::new(RefCell::new(interpreter));
@@ -230,7 +231,9 @@ fn main() -> Result<(), std::io::Error> {
             if str == "c" {
                 loop {
                     let result = interpreter.safely_run_instruction();
-                    if result.is_err() { break };
+                    if result.is_err() {
+                        break;
+                    };
                 }
             } else if str.starts_with("x") {
                 let args: Vec<&str> = str.split(" ").collect();
@@ -295,13 +298,14 @@ fn main() -> Result<(), std::io::Error> {
 
 #[cfg(test)]
 mod tests {
+    use super::components::cartridge;
     use super::gba;
     use gba::Opcode;
     use gba::Register;
 
     #[test]
     fn test_cpu_instrs_rom() {
-        let rom = gba::ROM::from_path("test-roms/blargg/cpu_instrs/cpu_instrs.gb");
+        let rom = cartridge::ROM::from_path("test-roms/blargg/cpu_instrs/cpu_instrs.gb");
         assert_eq!(rom.title(), "CPU_INSTRS");
         assert_eq!(rom.has_nintendo_logo(), true);
         assert_eq!(rom.has_valid_header_checksum(), true);
@@ -314,7 +318,7 @@ mod tests {
         if bytes.len() < 3 {
             bytes.resize(3, 0);
         }
-        let rom = gba::ROM::from_bytes(bytes.to_vec());
+        let rom = cartridge::ROM::from_bytes(bytes.to_vec());
         rom.opcode(0, |address| bytes[address as usize])
     }
 
@@ -335,7 +339,7 @@ mod tests {
     #[test]
     fn test_roms() {
         let test_cpu_instr = |name| {
-            let rom = gba::ROM::from_path(&format!(
+            let rom = cartridge::ROM::from_path(&format!(
                 "test-roms/blargg/cpu_instrs/individual/{}.gb",
                 name
             ));
@@ -353,7 +357,7 @@ mod tests {
             assert!(passing);
         };
         let test_rom = |name| {
-            let rom = gba::ROM::from_path(&format!("test-roms/blargg/{}.gb", name));
+            let rom = cartridge::ROM::from_path(&format!("test-roms/blargg/{}.gb", name));
             let mut interpreter = gba::Interpreter::with_rom(rom);
             let mut passing = false;
             let mut old_output_length = 0;
