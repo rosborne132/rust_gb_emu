@@ -7,6 +7,7 @@ use std::result::Result;
 
 use super::components::cartridge::ROM;
 use super::components::opcode::{flag_picker, FlagBit, MemoryBankType, Opcode, Register};
+use super::components::memory::Memory;
 
 // Used for debugging.
 // static CALL_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -84,15 +85,6 @@ pub enum LCDCInterruptBit {
     OAM = 1 << 5,
     VBlank = 1 << 4,
     HBlank = 1 << 3,
-}
-
-struct Memory {
-    video_ram: Vec<u8>,
-    work_ram_0: Vec<u8>,
-    work_ram_1: Vec<u8>,
-    other_ram: Vec<u8>,
-    external_ram: Vec<u8>,
-    external_ram_enabled: bool,
 }
 
 pub struct ScreenOutput {

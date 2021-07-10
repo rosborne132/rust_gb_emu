@@ -2,7 +2,7 @@
 
 Example invocations
 ```
-cargo run test-roms/blargg/cpu_instrs/individual/01-special.gb --show
+cargo run test-roms/component-test-roms/cpu_instrs/individual/01-special.gb --show
 cargo run test-roms/kirbo_dream_land.gb --show
 cargo run test-roms/dr_mario.gb --show
 ```
